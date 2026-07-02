@@ -1,0 +1,164 @@
+name: Promote stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Commit, branch, or tag to promote. Defaults to the workflow ref."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  NIX_DARWIN_HOSTNAME: ci-darwin
+  NIX_DARWIN_USER: runner
+  NIX_DARWIN_HOME: /Users/runner
+  HOME_MANAGER_CONFIG: ci-linux
+  HOME_MANAGER_SYSTEM: x86_64-linux
+
+jobs:
+  prepare:
+    name: prepare candidate
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_sha: ${{ steps.candidate.outputs.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve candidate
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_ref="${{ inputs.source_ref }}"
+          if [ -z "$source_ref" ]; then
+            source_ref="${{ github.sha }}"
+          fi
+
+          git fetch --tags --force origin '+refs/heads/*:refs/remotes/origin/*'
+          if git rev-parse --verify "$source_ref^{commit}" >/dev/null 2>&1; then
+            sha="$(git rev-parse "$source_ref^{commit}")"
+          else
+            sha="$(git rev-parse "origin/$source_ref^{commit}")"
+          fi
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+          printf 'Candidate: %s\n' "$sha"
+
+  eval:
+    name: eval candidate
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Eval
+        run: ./scripts/ci-check.sh eval
+
+  build-linux:
+    name: build linux home-manager
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Build Linux Home Manager
+        run: ./scripts/ci-check.sh build-home-linux
+
+  build-darwin:
+    name: build darwin nix-darwin
+    runs-on: macos-latest
+    needs: prepare
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Build nix-darwin
+        run: ./scripts/ci-check.sh build-darwin
+
+  promote:
+    name: squash commit to stable
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - eval
+      - build-linux
+      - build-darwin
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Push stable squash commit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          stable_branch="stable"
+          candidate_sha="${{ needs.prepare.outputs.candidate_sha }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --force origin
+
+          if git ls-remote --exit-code --heads origin "$stable_branch" >/dev/null 2>&1; then
+            git fetch origin "$stable_branch"
+            git checkout -B "$stable_branch" "origin/$stable_branch"
+            has_stable=1
+          else
+            git checkout --orphan "$stable_branch"
+            git rm -rf . >/dev/null 2>&1 || true
+            has_stable=0
+          fi
+
+          git read-tree --reset -u "$candidate_sha"
+
+          if [ "$has_stable" -eq 1 ] && git diff-index --quiet HEAD --; then
+            printf 'stable already matches %s\n' "$candidate_sha"
+            exit 0
+          fi
+
+          git commit \
+            -m "Promote stable: ${candidate_sha:0:12}" \
+            -m "Squashed from ${candidate_sha}."
+
+          git push origin "HEAD:$stable_branch"

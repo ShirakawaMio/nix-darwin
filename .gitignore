@@ -1,0 +1,50 @@
+# Nix build outputs
+/result
+/result-*
+/repl-result
+/.direnv
+
+# Local editor and OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+*~
+*.swp
+*.swo
+*.tmp
+*.bak
+*.orig
+
+# Local backups
+*.backup
+*.backup-*
+*.before-*
+*.before-nix-darwin
+*.migrated-to-*
+/*.backup.*
+/home-manager.backup.*
+/nix-darwin.backup.*
+
+# Logs
+*.log
+
+# Local secrets
+*.secret
+*.secrets
+*.age
+*.key
+*.pem
+*.p12
+/.env
+/.env.*
+!.env.example
+
+# Machine-local overrides
+local.nix
+local-*.nix
+*.local.nix
+/configuration.local.nix
+/home/home.local.nix
+
+# Optional generated checks
+/check-result
