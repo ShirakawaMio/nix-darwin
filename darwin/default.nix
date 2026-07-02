@@ -15,5 +15,9 @@
       setFlakeRegistry = true;
   };
 
+  nix.nixPath = [
+    "nixpkgs=flake:nixpkgs"
+  ];
+
   system.stateVersion = 6;
 }
