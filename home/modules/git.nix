@@ -13,6 +13,10 @@
       code.editor = "vim";
       init.defaultBranch = "main";
       core.excludesFile = "${config.home.homeDirectory}/.config/git/ignore";
+
+      extraConfig = {
+          credential.helper = "osxkeychain";
+      };
     };
   };
 
