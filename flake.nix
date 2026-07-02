@@ -17,8 +17,23 @@
     nix-darwin,
     home-manager,
     ...
-  }: {
-    darwinConfigurations."Mios-MacBook-Air" = nix-darwin.lib.darwinSystem {
+  }:
+  let
+    envOr = name: fallback:
+      let
+        value = builtins.getEnv name;
+      in
+      if value == "" then fallback else value;
+
+    hostName = envOr "NIX_DARWIN_HOSTNAME" "bootstrap";
+    hostModulePath = builtins.getEnv "NIX_DARWIN_HOST_MODULE";
+    hostModules =
+      if hostModulePath == "" then
+        []
+      else
+        [ (/. + hostModulePath) ];
+  in {
+    darwinConfigurations.${hostName} = nix-darwin.lib.darwinSystem {
       system = "aarch64-darwin";
 
       specialArgs = {
@@ -36,18 +51,8 @@
           home-manager.extraSpecialArgs = {
             inherit inputs;
           };
-
-          home-manager.users.mio = {
-           imports = [
-             ./home/home.nix
-             {
-                home.username = ''mio'';
-                home.homeDirectory = ''/Users/mio'';
-             }
-           ];
-          };
         }
-      ];
+      ] ++ hostModules;
     };
   };
 }

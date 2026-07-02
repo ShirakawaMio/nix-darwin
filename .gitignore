@@ -40,6 +40,7 @@
 !.env.example
 
 # Machine-local overrides
+/hosts/
 local.nix
 local-*.nix
 *.local.nix
