@@ -17,6 +17,8 @@ env:
   NIX_DARWIN_HOME: /Users/runner
   HOME_MANAGER_CONFIG: ci-linux
   HOME_MANAGER_SYSTEM: x86_64-linux
+  BOOT_REF: ${{ github.sha }}
+  BOOT_ARCHIVE_URL: https://github.com/${{ github.repository }}/archive/${{ github.sha }}.tar.gz
 
 jobs:
   prepare:
@@ -54,13 +56,10 @@ jobs:
     name: eval candidate
     runs-on: ubuntu-latest
     needs: prepare
+    env:
+      BOOT_REF: ${{ needs.prepare.outputs.candidate_sha }}
+      BOOT_ARCHIVE_URL: https://github.com/${{ github.repository }}/archive/${{ needs.prepare.outputs.candidate_sha }}.tar.gz
     steps:
-      - name: Checkout candidate
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.candidate_sha }}
-          fetch-depth: 0
-
       - name: Install Nix
         uses: cachix/install-nix-action@v31
         with:
@@ -68,20 +67,31 @@ jobs:
             experimental-features = nix-command flakes
             accept-flake-config = true
 
-      - name: Eval
+      - name: Eval via one-line entry
+        id: one_line
+        continue-on-error: true
+        run: |
+          sh <(curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ needs.prepare.outputs.candidate_sha }}/scripts/install.sh) ci-check eval
+
+      - name: Checkout candidate for fallback
+        if: steps.one_line.outcome == 'failure'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Eval fallback
+        if: steps.one_line.outcome == 'failure'
         run: ./scripts/ci-check.sh eval
 
   build-linux:
     name: build linux home-manager
     runs-on: ubuntu-latest
     needs: prepare
+    env:
+      BOOT_REF: ${{ needs.prepare.outputs.candidate_sha }}
+      BOOT_ARCHIVE_URL: https://github.com/${{ github.repository }}/archive/${{ needs.prepare.outputs.candidate_sha }}.tar.gz
     steps:
-      - name: Checkout candidate
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.candidate_sha }}
-          fetch-depth: 0
-
       - name: Install Nix
         uses: cachix/install-nix-action@v31
         with:
@@ -89,20 +99,31 @@ jobs:
             experimental-features = nix-command flakes
             accept-flake-config = true
 
-      - name: Build Linux Home Manager
+      - name: Build Linux Home Manager via one-line entry
+        id: one_line
+        continue-on-error: true
+        run: |
+          sh <(curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ needs.prepare.outputs.candidate_sha }}/scripts/install.sh) ci-check build-home-linux
+
+      - name: Checkout candidate for fallback
+        if: steps.one_line.outcome == 'failure'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Build Linux Home Manager fallback
+        if: steps.one_line.outcome == 'failure'
         run: ./scripts/ci-check.sh build-home-linux
 
   build-darwin:
     name: build darwin nix-darwin
     runs-on: macos-latest
     needs: prepare
+    env:
+      BOOT_REF: ${{ needs.prepare.outputs.candidate_sha }}
+      BOOT_ARCHIVE_URL: https://github.com/${{ github.repository }}/archive/${{ needs.prepare.outputs.candidate_sha }}.tar.gz
     steps:
-      - name: Checkout candidate
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.candidate_sha }}
-          fetch-depth: 0
-
       - name: Install Nix
         uses: cachix/install-nix-action@v31
         with:
@@ -110,7 +131,21 @@ jobs:
             experimental-features = nix-command flakes
             accept-flake-config = true
 
-      - name: Build nix-darwin
+      - name: Build nix-darwin via one-line entry
+        id: one_line
+        continue-on-error: true
+        run: |
+          sh <(curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ needs.prepare.outputs.candidate_sha }}/scripts/install.sh) ci-check build-darwin
+
+      - name: Checkout candidate for fallback
+        if: steps.one_line.outcome == 'failure'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Build nix-darwin fallback
+        if: steps.one_line.outcome == 'failure'
         run: ./scripts/ci-check.sh build-darwin
 
   promote:

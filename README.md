@@ -3,7 +3,19 @@ Mio's nix-darwin configuration
 
 ## 新设备复现
 
-在新设备上先把仓库放到任意临时目录，然后运行：
+在新设备上可以直接运行：
+
+```sh
+sh <(curl -fsSL https://raw.githubusercontent.com/ShirakawaMio/nix-darwin/main/scripts/install.sh) --install-nix --install-homebrew
+```
+
+Linux 不需要 Homebrew：
+
+```sh
+sh <(curl -fsSL https://raw.githubusercontent.com/ShirakawaMio/nix-darwin/main/scripts/install.sh) --install-nix
+```
+
+也可以先把仓库放到任意临时目录，然后运行：
 
 ```sh
 ./scripts/boot.sh --install-nix --install-homebrew
@@ -22,12 +34,6 @@ Linux 会把主仓库同步到 `~/.config/nix-home`，用 `home/flake.nix`
 
 ```sh
 ./scripts/boot.sh
-```
-
-Linux 不需要 Homebrew：
-
-```sh
-./scripts/boot.sh --install-nix
 ```
 
 只验证不切换：
