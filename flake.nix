@@ -27,6 +27,7 @@
 
       modules = [
         ./configuration.nix
+        ./brew.nix
         home-manager.darwinModules.home-manager
         {
           home-manager.useGlobalPkgs = true;
