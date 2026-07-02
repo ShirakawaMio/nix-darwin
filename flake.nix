@@ -37,7 +37,15 @@
             inherit inputs;
           };
 
-          home-manager.users.mio = import ./home/home.nix;
+          home-manager.users.mio = {
+           imports = [
+             ./home/home.nix
+             {
+                home.username = ''mio'';
+                home.homeDirectory = ''/Users/mio'';
+             }
+           ];
+          };
         }
       ];
     };
