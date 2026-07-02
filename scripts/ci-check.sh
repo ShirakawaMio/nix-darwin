@@ -33,7 +33,16 @@ repo_root() {
 
 detect_hostname() {
   local name
-  name="$(hostname -s 2>/dev/null || hostname)"
+  name=""
+
+  if [ -z "$name" ]; then
+    name="$(hostname -s 2>/dev/null || hostname)"
+  fi
+
+  if command -v scutil >/dev/null 2>&1; then
+    name="$(scutil --get LocalHostName 2>/dev/null || printf '%s' "$name")"
+  fi
+
   printf '%s' "$name" | tr -c '[:alnum:]_-' '-'
 }
 

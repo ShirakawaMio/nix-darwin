@@ -105,12 +105,12 @@ detect_hostname() {
   local name
   name=""
 
-  if command_exists scutil; then
-    name="$(scutil --get LocalHostName 2>/dev/null || true)"
-  fi
-
   if [ -z "$name" ]; then
     name="$(hostname -s 2>/dev/null || hostname)"
+  fi
+
+  if command_exists scutil; then
+    name="$(scutil --get LocalHostName 2>/dev/null || printf '%s' "$name")"
   fi
 
   sanitize_hostname "$name"
