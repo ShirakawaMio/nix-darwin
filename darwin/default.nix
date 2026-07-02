@@ -3,6 +3,7 @@
 {
   imports = [
     ./modules/homebrew.nix
+    ./modules/pam.nix
   ];
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
