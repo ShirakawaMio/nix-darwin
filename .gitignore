@@ -35,12 +35,11 @@
 *.key
 *.pem
 *.p12
-.env
-.env.*
+/.env
+/.env.*
 !.env.example
 
 # Machine-local overrides
-/hosts/
 local.nix
 local-*.nix
 *.local.nix

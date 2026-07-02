@@ -10,14 +10,14 @@ Usage: scripts/boot.sh [options]
 Bootstrap this flake on macOS or Linux.
 
 macOS:
-  Generates hosts/<hostname>.nix, then switches nix-darwin.
+  Stores host defaults in .env, then switches nix-darwin.
 
 Linux:
   Builds home/ as a standalone Home Manager configuration, then activates the
   generated user environment.
 
 Options:
-  --hostname NAME              macOS host flake output and hosts/<name>.nix.
+  --hostname NAME              macOS host flake output stored in .env.
                                Default: macOS LocalHostName or hostname -s
   --target-dir PATH            Config path to sync this repo into.
                                macOS default: /etc/nix-darwin
@@ -34,14 +34,16 @@ Options:
   --install-homebrew           macOS only: install Homebrew when it is missing.
   --no-sync                    Do not copy this checkout into --target-dir.
   --force-sync                 Allow replacing files in --target-dir with rsync.
-  --check-only                 Generate/check/build, but do not activate.
+  --check-only                 Generate .env, check/build, but do not activate.
   -h, --help                   Show this help.
 
 Environment overrides:
-  NIX_DARWIN_HOSTNAME, TARGET_DIR, TARGET_USER, TARGET_HOME,
+  NIX_DARWIN_HOSTNAME, NIX_DARWIN_USER, NIX_DARWIN_HOME, TARGET_DIR,
+  TARGET_USER, TARGET_HOME,
   HOME_MANAGER_CONFIG, HOME_MANAGER_SYSTEM
 
-The script itself does not install normal packages globally. Nix and Homebrew
+The script writes machine-local defaults to .env when they are missing. The
+script itself does not install normal packages globally. Nix and Homebrew
 bootstrap are explicit opt-ins. Linux Home Manager activation installs into the
 target user's Home Manager profile, not a system-wide package profile.
 USAGE
@@ -128,8 +130,81 @@ detect_linux_system() {
   esac
 }
 
-nix_string_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\${/\\${/g'
+env_escape() {
+  printf '%s' "$1" | sed "s/'/'\\\\''/g"
+}
+
+load_env_file() {
+  local key value
+
+  if [ -f "$REPO_ROOT/.env" ]; then
+    while IFS='=' read -r key value; do
+      case "$key" in
+        NIX_DARWIN_HOSTNAME|NIX_DARWIN_USER|NIX_DARWIN_HOME|HOME_MANAGER_CONFIG|HOME_MANAGER_SYSTEM)
+          if [ -z "${!key:-}" ]; then
+            eval "$key=$value"
+            export "$key"
+          fi
+          ;;
+      esac
+    done < "$REPO_ROOT/.env"
+  fi
+}
+
+write_env_file() {
+  cat > "$REPO_ROOT/.env" <<EOF
+NIX_DARWIN_HOSTNAME='$(env_escape "$HOST_NAME")'
+NIX_DARWIN_USER='$(env_escape "$TARGET_USER")'
+NIX_DARWIN_HOME='$(env_escape "$TARGET_HOME")'
+HOME_MANAGER_CONFIG='$(env_escape "$HOME_MANAGER_CONFIG_VALUE")'
+HOME_MANAGER_SYSTEM='$(env_escape "$HOME_MANAGER_SYSTEM_VALUE")'
+EOF
+}
+
+ensure_env_defaults() {
+  local changed
+  changed=0
+
+  if [ -z "${NIX_DARWIN_HOSTNAME:-}" ]; then
+    NIX_DARWIN_HOSTNAME="$(detect_hostname)"
+    changed=1
+  fi
+
+  if [ -z "${NIX_DARWIN_USER:-}" ]; then
+    NIX_DARWIN_USER="$(id -un)"
+    changed=1
+  fi
+
+  if [ -z "${NIX_DARWIN_HOME:-}" ]; then
+    NIX_DARWIN_HOME="$HOME"
+    changed=1
+  fi
+
+  if [ -z "${HOME_MANAGER_CONFIG:-}" ]; then
+    HOME_MANAGER_CONFIG="$NIX_DARWIN_USER"
+    changed=1
+  fi
+
+  if [ -z "${HOME_MANAGER_SYSTEM:-}" ] && [ "$OS_NAME" = "Linux" ]; then
+    HOME_MANAGER_SYSTEM="$(detect_linux_system)"
+    changed=1
+  fi
+
+  HOST_NAME="${HOST_NAME:-$NIX_DARWIN_HOSTNAME}"
+  TARGET_USER="${TARGET_USER:-$NIX_DARWIN_USER}"
+  TARGET_HOME="${TARGET_HOME:-$NIX_DARWIN_HOME}"
+  HOME_MANAGER_CONFIG_VALUE="${HOME_MANAGER_CONFIG_VALUE:-$HOME_MANAGER_CONFIG}"
+  HOME_MANAGER_SYSTEM_VALUE="${HOME_MANAGER_SYSTEM_VALUE:-${HOME_MANAGER_SYSTEM:-}}"
+
+  if [ -z "$HOME_MANAGER_SYSTEM_VALUE" ] && [ "$OS_NAME" = "Darwin" ]; then
+    HOME_MANAGER_SYSTEM_VALUE="aarch64-darwin"
+    changed=1
+  fi
+
+  if [ "$changed" -eq 1 ] || [ ! -f "$REPO_ROOT/.env" ]; then
+    write_env_file
+    info "Updated machine-local .env"
+  fi
 }
 
 load_nix_profile() {
@@ -222,6 +297,12 @@ install_homebrew() {
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 }
 
+install_hooks_if_git_repo() {
+  if [ -d "$REPO_ROOT/.git" ]; then
+    "$REPO_ROOT/scripts/install-hooks.sh"
+  fi
+}
+
 sync_repo() {
   local source_root target_dir use_sudo source_real target_real
   local rsync_args
@@ -248,7 +329,7 @@ sync_repo() {
     die "$target_dir is not empty. Re-run with --force-sync after reviewing it, or use --no-sync."
   fi
 
-  rsync_args=(-a --exclude result --exclude 'result-*' --exclude hosts)
+  rsync_args=(-a --exclude result --exclude 'result-*')
   if [ "$FORCE_SYNC" -eq 1 ]; then
     rsync_args+=(--delete)
   fi
@@ -257,81 +338,7 @@ sync_repo() {
   canonical_path "$target_dir"
 }
 
-ensure_hosts_git() {
-  local hosts_dir
-  hosts_dir="$1"
-
-  command_exists git || die "git is required to manage hosts as a nested repo"
-  mkdir -p "$hosts_dir"
-
-  if [ ! -d "$hosts_dir/.git" ]; then
-    info "Initializing nested hosts git repo"
-    git -C "$hosts_dir" init
-  fi
-
-  if ! git -C "$hosts_dir" config user.name >/dev/null; then
-    git -C "$hosts_dir" config user.name "nix-darwin bootstrap"
-  fi
-
-  if ! git -C "$hosts_dir" config user.email >/dev/null; then
-    git -C "$hosts_dir" config user.email "nix-darwin-bootstrap@localhost"
-  fi
-}
-
-generate_host_module() {
-  local repo_root host_name user_name home_dir hosts_dir host_file
-  local escaped_host escaped_user escaped_home
-  repo_root="$1"
-  host_name="$2"
-  user_name="$3"
-  home_dir="$4"
-  hosts_dir="$repo_root/hosts"
-  host_file="$hosts_dir/$host_name.nix"
-
-  ensure_hosts_git "$hosts_dir"
-
-  escaped_host="$(nix_string_escape "$host_name")"
-  escaped_user="$(nix_string_escape "$user_name")"
-  escaped_home="$(nix_string_escape "$home_dir")"
-
-  cat > "$host_file" <<EOF
-{ ... }:
-
-{
-  # Generated by scripts/boot.sh for ${escaped_host}.
-  nix.settings.trusted-users = [
-    "root"
-    "${escaped_user}"
-  ];
-
-  users.users."${escaped_user}" = {
-    name = "${escaped_user}";
-    home = "${escaped_home}";
-  };
-
-  home-manager.users."${escaped_user}" = {
-    imports = [
-      ../home/home.nix
-      {
-        home.username = "${escaped_user}";
-        home.homeDirectory = "${escaped_home}";
-      }
-    ];
-  };
-}
-EOF
-
-  git -C "$hosts_dir" add "$host_name.nix"
-  if ! git -C "$hosts_dir" diff --cached --quiet; then
-    git -C "$hosts_dir" commit -m "Update $host_name host config"
-  fi
-
-  printf '%s\n' "$host_file"
-}
-
 bootstrap_darwin() {
-  local host_module_file
-
   if [ "$(uname -m)" != "arm64" ]; then
     die "this nix-darwin flake currently targets aarch64-darwin, but this machine is $(uname -m)"
   fi
@@ -339,8 +346,6 @@ bootstrap_darwin() {
   if [ "$SYNC_TO_TARGET" -eq 1 ]; then
     REPO_ROOT="$(sync_repo "$REPO_ROOT" "$TARGET_DIR" 1)"
   fi
-
-  host_module_file="$(generate_host_module "$REPO_ROOT" "$HOST_NAME" "$TARGET_USER" "$TARGET_HOME")"
 
   ensure_nix
 
@@ -354,7 +359,6 @@ bootstrap_darwin() {
   fi
 
   export NIX_DARWIN_HOSTNAME="$HOST_NAME"
-  export NIX_DARWIN_HOST_MODULE="$host_module_file"
   export NIX_DARWIN_USER="$TARGET_USER"
   export NIX_DARWIN_HOME="$TARGET_HOME"
 
@@ -375,7 +379,6 @@ bootstrap_darwin() {
   info "Switching nix-darwin configuration $HOST_NAME"
   sudo env \
     NIX_DARWIN_HOSTNAME="$HOST_NAME" \
-    NIX_DARWIN_HOST_MODULE="$host_module_file" \
     NIX_DARWIN_USER="$TARGET_USER" \
     NIX_DARWIN_HOME="$TARGET_HOME" \
     "$NIX_BIN" "${NIX_FLAGS[@]}" run --impure nix-darwin/master#darwin-rebuild -- switch --flake "$REPO_ROOT#$HOST_NAME" --impure
@@ -418,16 +421,15 @@ bootstrap_linux() {
   info "Bootstrap complete. Open a new shell to pick up Home Manager changes."
 }
 
-DETECTED_HOSTNAME="$(detect_hostname)"
-HOST_NAME="${NIX_DARWIN_HOSTNAME:-${DARWIN_CONFIGURATION:-$DETECTED_HOSTNAME}}"
 TARGET_DIR="${TARGET_DIR:-}"
-TARGET_USER="${TARGET_USER:-$(id -un)}"
-TARGET_HOME="${TARGET_HOME:-$HOME}"
+HOST_NAME="${NIX_DARWIN_HOSTNAME:-${DARWIN_CONFIGURATION:-}}"
+TARGET_USER="${TARGET_USER:-${NIX_DARWIN_USER:-}}"
+TARGET_HOME="${TARGET_HOME:-${NIX_DARWIN_HOME:-}}"
 if [ -n "${HOME_MANAGER_CONFIG:-}" ]; then
   HOME_MANAGER_CONFIG_VALUE="$HOME_MANAGER_CONFIG"
   HOME_MANAGER_CONFIG_SET=1
 else
-  HOME_MANAGER_CONFIG_VALUE="$TARGET_USER"
+  HOME_MANAGER_CONFIG_VALUE=""
   HOME_MANAGER_CONFIG_SET=0
 fi
 HOME_MANAGER_SYSTEM_VALUE="${HOME_MANAGER_SYSTEM:-}"
@@ -503,6 +505,12 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+SCRIPT_DIR="$(script_dir)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd -P)"
+NIX_FLAGS=(--extra-experimental-features "nix-command flakes" --accept-flake-config)
+
+load_env_file
+ensure_env_defaults
 HOST_NAME="$(sanitize_hostname "$HOST_NAME")"
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -513,9 +521,7 @@ if [ "$(id -un)" != "$TARGET_USER" ]; then
   die "current user is $(id -un), but target user is $TARGET_USER. Login as $TARGET_USER or pass --user $(id -un)."
 fi
 
-SCRIPT_DIR="$(script_dir)"
-REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd -P)"
-NIX_FLAGS=(--extra-experimental-features "nix-command flakes")
+install_hooks_if_git_repo
 
 case "$OS_NAME" in
   Darwin)

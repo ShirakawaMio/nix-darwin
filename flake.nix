@@ -1,6 +1,14 @@
 {
   description = "Mio nix-darwin configuration";
 
+  nixConfig = {
+    extra-experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
+    pure-eval = false;
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
@@ -26,18 +34,15 @@
       if value == "" then fallback else value;
 
     hostName = envOr "NIX_DARWIN_HOSTNAME" "bootstrap";
-    hostModulePath = builtins.getEnv "NIX_DARWIN_HOST_MODULE";
-    hostModules =
-      if hostModulePath == "" then
-        []
-      else
-        [ (/. + hostModulePath) ];
+    darwinUser = envOr "NIX_DARWIN_USER" "bootstrap";
+    darwinHome = envOr "NIX_DARWIN_HOME" "/Users/${darwinUser}";
   in {
     darwinConfigurations.${hostName} = nix-darwin.lib.darwinSystem {
       system = "aarch64-darwin";
 
       specialArgs = {
         inherit inputs;
+        systemUser = darwinUser;
       };
 
       modules = [
@@ -52,7 +57,28 @@
             inherit inputs;
           };
         }
-      ] ++ hostModules;
+        {
+          nix.settings.trusted-users = [
+            "root"
+            darwinUser
+          ];
+
+          users.users.${darwinUser} = {
+            name = darwinUser;
+            home = darwinHome;
+          };
+
+          home-manager.users.${darwinUser} = {
+            imports = [
+              ./home/home.nix
+              {
+                home.username = darwinUser;
+                home.homeDirectory = darwinHome;
+              }
+            ];
+          };
+        }
+      ];
     };
   };
 }

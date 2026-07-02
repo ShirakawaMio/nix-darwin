@@ -1,6 +1,14 @@
 {
   description = ''Mio Home Manager configuration'';
 
+  nixConfig = {
+    extra-experimental-features = [
+      ''nix-command''
+      ''flakes''
+    ];
+    pure-eval = false;
+  };
+
   inputs = {
     nixpkgs.url = ''github:NixOS/nixpkgs/nixpkgs-unstable'';
 

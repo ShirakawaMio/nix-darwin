@@ -1,7 +1,7 @@
-{ config, pkgs, ... }:
+{ systemUser, ... }:
 
 {
-  system.primaryUser = "mio";
+  system.primaryUser = systemUser;
   homebrew = {
     enable = true;
 
