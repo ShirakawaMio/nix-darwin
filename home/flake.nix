@@ -12,7 +12,16 @@
 
   outputs = inputs@{ self, nixpkgs, home-manager, ... }:
   let
-    username = ''mio'';
+    envOr = name: fallback:
+      let
+        value = builtins.getEnv name;
+      in
+      if value == "" then fallback else value;
+
+    username = envOr "HOME_MANAGER_USER" "user";
+    homeDirectory = envOr "HOME_MANAGER_HOME" "/home/${username}";
+    system = envOr "HOME_MANAGER_SYSTEM" "x86_64-linux";
+    configName = envOr "HOME_MANAGER_CONFIG" username;
 
     mkPkgs = system:
       import nixpkgs {
@@ -20,26 +29,14 @@
         config.allowUnfree = true;
       };
   in {
-    homeConfigurations.mio-linux = home-manager.lib.homeManagerConfiguration {
-      pkgs = mkPkgs ''x86_64-linux'';
+    homeConfigurations.${configName} = home-manager.lib.homeManagerConfiguration {
+      pkgs = mkPkgs system;
 
       modules = [
         ./home.nix
         {
           home.username = username;
-          home.homeDirectory = ''/home/${username}'';
-        }
-      ];
-    };
-
-    homeConfigurations.mio-darwin = home-manager.lib.homeManagerConfiguration {
-      pkgs = mkPkgs ''aarch64-darwin'';
-
-      modules = [
-        ./home.nix
-        {
-          home.username = username;
-          home.homeDirectory = ''/Users/${username}'';
+          home.homeDirectory = homeDirectory;
         }
       ];
     };
