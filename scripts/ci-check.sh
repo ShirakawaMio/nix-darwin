@@ -31,6 +31,20 @@ repo_root() {
   }
 }
 
+tracked_or_found_files() {
+  local pattern
+  pattern="$1"
+
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git ls-files "$pattern"
+  else
+    find . -type f -name "$pattern" \
+      ! -path './.git/*' \
+      ! -path './result/*' \
+      ! -path './result-*/*'
+  fi
+}
+
 detect_hostname() {
   local name
   name=""
@@ -124,7 +138,14 @@ check_shell_syntax() {
 
   while IFS= read -r file; do
     files+=("$file")
-  done < <(git ls-files '*.sh' '.githooks/*')
+  done < <(
+    tracked_or_found_files '*.sh'
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      git ls-files '.githooks/*'
+    elif [ -d .githooks ]; then
+      find .githooks -type f
+    fi
+  )
 
   if [ "${#files[@]}" -eq 0 ]; then
     return
@@ -145,7 +166,7 @@ check_nix_syntax() {
   info "Checking Nix syntax"
   while IFS= read -r file; do
     nix-instantiate --parse "$file" >/dev/null
-  done < <(git ls-files '*.nix')
+  done < <(tracked_or_found_files '*.nix')
 }
 
 eval_darwin() {
@@ -184,6 +205,7 @@ run_pre_commit() {
     die "tracked unstaged changes exist. Stage or revert them before committing."
   fi
 
+  NIX_FLAGS+=(--no-warn-dirty)
   run_eval
 }
 

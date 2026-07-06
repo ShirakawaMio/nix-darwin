@@ -14,6 +14,9 @@ in
   ];
 
   programs.zsh = {
+
+    dotDir = config.home.homeDirectory;
+
     enable = true;
     enableCompletion = true;
     autosuggestion.enable = true;

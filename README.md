@@ -3,7 +3,19 @@ Mio's nix-darwin configuration
 
 ## 新设备复现
 
-在新设备上先把仓库放到任意临时目录，然后运行：
+在新设备上可以直接运行：
+
+```sh
+sh <(curl -fsSL https://raw.githubusercontent.com/ShirakawaMio/nix-darwin/main/scripts/install.sh) --install-nix --install-homebrew
+```
+
+Linux 不需要 Homebrew：
+
+```sh
+sh <(curl -fsSL https://raw.githubusercontent.com/ShirakawaMio/nix-darwin/main/scripts/install.sh) --install-nix
+```
+
+也可以先把仓库放到任意临时目录，然后运行：
 
 ```sh
 ./scripts/boot.sh --install-nix --install-homebrew
@@ -22,12 +34,6 @@ Linux 会把主仓库同步到 `~/.config/nix-home`，用 `home/flake.nix`
 
 ```sh
 ./scripts/boot.sh
-```
-
-Linux 不需要 Homebrew：
-
-```sh
-./scripts/boot.sh --install-nix
 ```
 
 只验证不切换：
@@ -76,7 +82,13 @@ workflow 会先构建候选版本：
 - macOS nix-darwin system
 
 两个 build 都通过后，workflow 才会把候选 tree squash 成一个 commit
-并推送到 `stable`。
+并推送到 `stable`。这个 squash commit 的标题是自动生成的版本号：
+`YYYY.MM.DD.N`，日期使用 UTC，`N` 是 GitHub Actions run number。
+
+commit 正文会写入 `Change log since last update`。workflow 会根据上一次
+`stable` commit 里的 `Squashed from <sha>` 找到上次发布的源提交，再调用
+GitHub Models 生成中文详细 changelog；如果模型调用失败，会回退为普通
+git log 列表并继续发布。
 
 建议在 GitHub 上保护 `stable` 分支，只允许 GitHub Actions 或专用 bot
 推送该分支。

@@ -55,7 +55,7 @@ die() {
 }
 
 info() {
-  printf '==> %s\n' "$*"
+  printf '==> %s\n' "$*" >&2
 }
 
 command_exists() {
