@@ -32,7 +32,6 @@ in
     "unzip"
     "uv"
     "w3m"
-    "yazi"
     "zoxide"
     "zsh-syntax-highlighting"
   ];
