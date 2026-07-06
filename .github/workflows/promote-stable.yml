@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  models: read
 
 env:
   NIX_DARWIN_HOSTNAME: ci-darwin
@@ -17,6 +18,7 @@ env:
   NIX_DARWIN_HOME: /Users/runner
   HOME_MANAGER_CONFIG: ci-linux
   HOME_MANAGER_SYSTEM: x86_64-linux
+  AI_CHANGELOG_MODEL: openai/gpt-4.1
   BOOT_REF: ${{ github.sha }}
   BOOT_ARCHIVE_URL: https://github.com/${{ github.repository }}/archive/${{ github.sha }}.tar.gz
 
@@ -165,11 +167,19 @@ jobs:
 
       - name: Push stable squash commit
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
           stable_branch="stable"
           candidate_sha="${{ needs.prepare.outputs.candidate_sha }}"
+          release_version="$(date -u '+%Y.%m.%d').${GITHUB_RUN_NUMBER}"
+          changelog_file="$(mktemp)"
+          commit_message_file="$(mktemp)"
+          changelog_script="$(mktemp)"
+
+          cp scripts/stable-changelog.sh "$changelog_script"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -192,8 +202,31 @@ jobs:
             exit 0
           fi
 
-          git commit \
-            -m "Promote stable: ${candidate_sha:0:12}" \
-            -m "Squashed from ${candidate_sha}."
+          bash "$changelog_script" "$candidate_sha" "$release_version" "$changelog_file"
+
+          previous_source_sha="$(
+            git log --format=%B -n 1 "origin/$stable_branch" 2>/dev/null |
+              sed -nE 's/^Squashed from ([0-9a-f]{40})\.?$/\1/p' |
+              head -n 1 || true
+          )"
+          if [ -z "$previous_source_sha" ]; then
+            previous_source_sha="none"
+          fi
+          if head -n 1 "$changelog_file" | grep -q '^AI changelog generation failed;'; then
+            changelog_model="fallback git log"
+          else
+            changelog_model="${AI_CHANGELOG_MODEL:-openai/gpt-4.1}"
+          fi
+
+          {
+            printf '%s\n\n' "$release_version"
+            printf 'Change log since last update\n\n'
+            cat "$changelog_file"
+            printf '\nPrevious stable source: %s\n' "$previous_source_sha"
+            printf 'Squashed from %s.\n' "$candidate_sha"
+            printf 'Generated changelog model: %s.\n' "$changelog_model"
+          } > "$commit_message_file"
+
+          git commit -F "$commit_message_file"
 
           git push origin "HEAD:$stable_branch"
