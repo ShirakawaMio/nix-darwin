@@ -205,6 +205,7 @@ run_pre_commit() {
     die "tracked unstaged changes exist. Stage or revert them before committing."
   fi
 
+  NIX_FLAGS+=(--no-warn-dirty)
   run_eval
 }
 
