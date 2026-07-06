@@ -7,6 +7,7 @@
     ./modules/git.nix
     ./modules/xdg-configs.nix
     ./modules/global-install-blocker.nix
+    ./modules/neovim.nix
   ];
 
   programs.home-manager.enable = true;

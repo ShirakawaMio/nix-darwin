@@ -24,7 +24,6 @@ in
     "gh"
     "git"
     "htop"
-    "neovim"
     "p7zip"
     "rename"
     "ripgrep"
