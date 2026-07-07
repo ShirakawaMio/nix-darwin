@@ -6,25 +6,31 @@ Mio's nix-darwin configuration
 在新设备上可以直接运行：
 
 ```sh
-sh <(curl -fsSL https://raw.githubusercontent.com/ShirakawaMio/nix-darwin/main/scripts/install.sh) --install-nix --install-homebrew
+sh <(curl -fsSL https://static.mio.cat/scripts/nix-darwin/install.sh) --install-nix --install-cask
 ```
 
 Linux 不需要 Homebrew：
 
 ```sh
-sh <(curl -fsSL https://raw.githubusercontent.com/ShirakawaMio/nix-darwin/main/scripts/install.sh) --install-nix
+sh <(curl -fsSL https://static.mio.cat/scripts/nix-darwin/install.sh) --install-nix
 ```
+
+安装器默认使用 `stable`。需要直接使用 `main` 时加 `--unstable`。
 
 也可以先把仓库放到任意临时目录，然后运行：
 
 ```sh
-./scripts/boot.sh --install-nix --install-homebrew
+./scripts/boot.sh --install-nix --install-cask
 ```
 
 macOS 会按当前机器的 LocalHostName 和当前用户生成本地 `.env`，
 再把主仓库同步到 `/etc/nix-darwin`，检查 flake，构建
 `darwinConfigurations.<hostname>.system`，然后执行
 `darwin-rebuild switch --flake /etc/nix-darwin#<hostname> --impure`。
+
+macOS 的 `--install-cask` 会安装 Homebrew 并启用 `homebrew.nix` 管理
+cask；如果跳过 cask/Homebrew，`homebrew.nix` 不会启用。
+`--install-homebrew` 仅作为兼容旧命令的别名保留。
 
 Linux 会把主仓库同步到 `~/.config/nix-home`，用 `home/flake.nix`
 生成当前用户的 standalone Home Manager 配置，构建
