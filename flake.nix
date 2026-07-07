@@ -62,9 +62,21 @@
       in
       if value == "" then fileOr name fallback else value;
 
+    boolEnvOr = name: fallback:
+      let
+        value = envOr name fallback;
+      in
+      if value == "true" then
+        true
+      else if value == "false" then
+        false
+      else
+        throw "${name} must be 'true' or 'false'";
+
     hostName = envOr "NIX_DARWIN_HOSTNAME" "bootstrap";
     darwinUser = envOr "NIX_DARWIN_USER" "bootstrap";
     darwinHome = envOr "NIX_DARWIN_HOME" "/Users/${darwinUser}";
+    enableHomebrewCasks = boolEnvOr "NIX_DARWIN_ENABLE_HOMEBREW_CASKS" "false";
   in {
     darwinConfigurations.${hostName} = nix-darwin.lib.darwinSystem {
       system = "aarch64-darwin";
@@ -77,6 +89,9 @@
       modules = [
         ./darwin
         home-manager.darwinModules.home-manager
+      ] ++ lib.optionals enableHomebrewCasks [
+        ./darwin/modules/homebrew.nix
+      ] ++ [
         {
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;

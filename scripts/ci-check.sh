@@ -64,13 +64,27 @@ env_escape() {
   printf '%s' "$1" | sed "s/'/'\\\\''/g"
 }
 
+validate_bool() {
+  local name value
+  name="$1"
+  value="$2"
+
+  case "$value" in
+    true|false)
+      ;;
+    *)
+      die "$name must be 'true' or 'false'"
+      ;;
+  esac
+}
+
 load_env_file() {
   local key value
 
   if [ -f "$REPO_ROOT/.env" ]; then
     while IFS='=' read -r key value; do
       case "$key" in
-        NIX_DARWIN_HOSTNAME|NIX_DARWIN_USER|NIX_DARWIN_HOME|HOME_MANAGER_CONFIG|HOME_MANAGER_SYSTEM)
+        NIX_DARWIN_HOSTNAME|NIX_DARWIN_USER|NIX_DARWIN_HOME|NIX_DARWIN_ENABLE_HOMEBREW_CASKS|HOME_MANAGER_CONFIG|HOME_MANAGER_SYSTEM)
           if [ -z "${!key:-}" ]; then
             eval "$key=$value"
             export "$key"
@@ -82,11 +96,12 @@ load_env_file() {
 }
 
 ensure_env_file() {
-  local changed host user home config system
+  local changed host user home enable_casks config system
   changed=0
   host="${NIX_DARWIN_HOSTNAME:-}"
   user="${NIX_DARWIN_USER:-}"
   home="${NIX_DARWIN_HOME:-}"
+  enable_casks="${NIX_DARWIN_ENABLE_HOMEBREW_CASKS:-}"
   config="${HOME_MANAGER_CONFIG:-}"
   system="${HOME_MANAGER_SYSTEM:-}"
 
@@ -105,6 +120,13 @@ ensure_env_file() {
     changed=1
   fi
 
+  if [ -z "$enable_casks" ]; then
+    enable_casks="false"
+    changed=1
+  fi
+
+  validate_bool NIX_DARWIN_ENABLE_HOMEBREW_CASKS "$enable_casks"
+
   if [ -z "$config" ]; then
     config="$user"
     changed=1
@@ -115,6 +137,7 @@ ensure_env_file() {
 NIX_DARWIN_HOSTNAME='$(env_escape "$host")'
 NIX_DARWIN_USER='$(env_escape "$user")'
 NIX_DARWIN_HOME='$(env_escape "$home")'
+NIX_DARWIN_ENABLE_HOMEBREW_CASKS='$(env_escape "$enable_casks")'
 HOME_MANAGER_CONFIG='$(env_escape "$config")'
 HOME_MANAGER_SYSTEM='$(env_escape "$system")'
 EOF
@@ -124,6 +147,7 @@ EOF
   export NIX_DARWIN_HOSTNAME="$host"
   export NIX_DARWIN_USER="$user"
   export NIX_DARWIN_HOME="$home"
+  export NIX_DARWIN_ENABLE_HOMEBREW_CASKS="$enable_casks"
   export HOME_MANAGER_CONFIG="$config"
   export HOME_MANAGER_SYSTEM="$system"
 }
@@ -170,11 +194,15 @@ check_nix_syntax() {
 }
 
 eval_darwin() {
-  info "Evaluating nix-darwin system"
+  local enable_casks
+  enable_casks="$1"
+
+  info "Evaluating nix-darwin system with Homebrew casks $enable_casks"
   env \
     NIX_DARWIN_HOSTNAME="${NIX_DARWIN_HOSTNAME:-ci-darwin}" \
     NIX_DARWIN_USER="${NIX_DARWIN_USER:-runner}" \
     NIX_DARWIN_HOME="${NIX_DARWIN_HOME:-/Users/${NIX_DARWIN_USER:-runner}}" \
+    NIX_DARWIN_ENABLE_HOMEBREW_CASKS="$enable_casks" \
     nix "${NIX_FLAGS[@]}" eval --impure \
       ".#darwinConfigurations.${NIX_DARWIN_HOSTNAME:-ci-darwin}.system.drvPath" >/dev/null
 }
@@ -196,7 +224,8 @@ run_eval() {
   ensure_env_file
   check_shell_syntax
   check_nix_syntax
-  eval_darwin
+  eval_darwin false
+  eval_darwin true
   eval_home_linux
 }
 
@@ -218,6 +247,7 @@ build_darwin() {
     NIX_DARWIN_HOSTNAME="${NIX_DARWIN_HOSTNAME:-ci-darwin}" \
     NIX_DARWIN_USER="${NIX_DARWIN_USER:-runner}" \
     NIX_DARWIN_HOME="${NIX_DARWIN_HOME:-/Users/${NIX_DARWIN_USER:-runner}}" \
+    NIX_DARWIN_ENABLE_HOMEBREW_CASKS="${NIX_DARWIN_ENABLE_HOMEBREW_CASKS:-false}" \
     nix "${NIX_FLAGS[@]}" build --impure --no-link \
       ".#darwinConfigurations.${NIX_DARWIN_HOSTNAME:-ci-darwin}.system"
 }
