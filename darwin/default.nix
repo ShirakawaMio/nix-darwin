@@ -2,7 +2,6 @@
 
 {
   imports = [
-    ./modules/homebrew.nix
     ./modules/pam.nix
   ];
 

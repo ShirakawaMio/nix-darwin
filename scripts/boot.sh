@@ -31,15 +31,18 @@ Options:
   --home-manager-system SYSTEM Linux Home Manager nixpkgs system.
                                Default: detected Linux system
   --install-nix                Install Nix first when it is missing.
-  --install-homebrew           macOS only: install Homebrew when it is missing.
+  --install-cask               macOS only: enable Homebrew casks and install
+                               Homebrew when it is missing.
+  --install-homebrew           Backward-compatible alias for --install-cask.
   --no-sync                    Do not copy this checkout into --target-dir.
   --force-sync                 Allow replacing files in --target-dir with rsync.
   --check-only                 Generate .env, check/build, but do not activate.
   -h, --help                   Show this help.
 
 Environment overrides:
-  NIX_DARWIN_HOSTNAME, NIX_DARWIN_USER, NIX_DARWIN_HOME, TARGET_DIR,
-  TARGET_USER, TARGET_HOME,
+  NIX_DARWIN_HOSTNAME, NIX_DARWIN_USER, NIX_DARWIN_HOME,
+  NIX_DARWIN_ENABLE_HOMEBREW_CASKS='true|false',
+  TARGET_DIR, TARGET_USER, TARGET_HOME,
   HOME_MANAGER_CONFIG, HOME_MANAGER_SYSTEM
 
 The script writes machine-local defaults to .env when they are missing. The
@@ -134,13 +137,54 @@ env_escape() {
   printf '%s' "$1" | sed "s/'/'\\\\''/g"
 }
 
+validate_bool() {
+  local name value
+  name="$1"
+  value="$2"
+
+  case "$value" in
+    true|false)
+      ;;
+    *)
+      die "$name must be 'true' or 'false'"
+      ;;
+  esac
+}
+
+prompt_enable_homebrew_casks() {
+  local reply
+
+  if [ "$OS_NAME" != "Darwin" ]; then
+    printf '%s\n' false
+    return
+  fi
+
+  if [ "$INSTALL_CASK" -eq 1 ]; then
+    printf '%s\n' true
+    return
+  fi
+
+  if [ -t 0 ]; then
+    printf 'Enable Homebrew casks and install Homebrew if missing? [y/N] ' >&2
+    read -r reply || reply=""
+    case "$reply" in
+      y|Y|yes|YES|Yes)
+        printf '%s\n' true
+        return
+        ;;
+    esac
+  fi
+
+  printf '%s\n' false
+}
+
 load_env_file() {
   local key value
 
   if [ -f "$REPO_ROOT/.env" ]; then
     while IFS='=' read -r key value; do
       case "$key" in
-        NIX_DARWIN_HOSTNAME|NIX_DARWIN_USER|NIX_DARWIN_HOME|HOME_MANAGER_CONFIG|HOME_MANAGER_SYSTEM)
+        NIX_DARWIN_HOSTNAME|NIX_DARWIN_USER|NIX_DARWIN_HOME|NIX_DARWIN_ENABLE_HOMEBREW_CASKS|HOME_MANAGER_CONFIG|HOME_MANAGER_SYSTEM)
           if [ -z "${!key:-}" ]; then
             eval "$key=$value"
             export "$key"
@@ -156,6 +200,7 @@ write_env_file() {
 NIX_DARWIN_HOSTNAME='$(env_escape "$HOST_NAME")'
 NIX_DARWIN_USER='$(env_escape "$TARGET_USER")'
 NIX_DARWIN_HOME='$(env_escape "$TARGET_HOME")'
+NIX_DARWIN_ENABLE_HOMEBREW_CASKS='$(env_escape "$ENABLE_HOMEBREW_CASKS")'
 HOME_MANAGER_CONFIG='$(env_escape "$HOME_MANAGER_CONFIG_VALUE")'
 HOME_MANAGER_SYSTEM='$(env_escape "$HOME_MANAGER_SYSTEM_VALUE")'
 EOF
@@ -180,6 +225,16 @@ ensure_env_defaults() {
     changed=1
   fi
 
+  if [ "$INSTALL_CASK" -eq 1 ]; then
+    NIX_DARWIN_ENABLE_HOMEBREW_CASKS="true"
+    changed=1
+  elif [ -z "${NIX_DARWIN_ENABLE_HOMEBREW_CASKS:-}" ]; then
+    NIX_DARWIN_ENABLE_HOMEBREW_CASKS="$(prompt_enable_homebrew_casks)"
+    changed=1
+  fi
+
+  validate_bool NIX_DARWIN_ENABLE_HOMEBREW_CASKS "$NIX_DARWIN_ENABLE_HOMEBREW_CASKS"
+
   if [ -z "${HOME_MANAGER_CONFIG:-}" ]; then
     HOME_MANAGER_CONFIG="$NIX_DARWIN_USER"
     changed=1
@@ -193,6 +248,7 @@ ensure_env_defaults() {
   HOST_NAME="${HOST_NAME:-$NIX_DARWIN_HOSTNAME}"
   TARGET_USER="${TARGET_USER:-$NIX_DARWIN_USER}"
   TARGET_HOME="${TARGET_HOME:-$NIX_DARWIN_HOME}"
+  ENABLE_HOMEBREW_CASKS="${ENABLE_HOMEBREW_CASKS:-$NIX_DARWIN_ENABLE_HOMEBREW_CASKS}"
   HOME_MANAGER_CONFIG_VALUE="${HOME_MANAGER_CONFIG_VALUE:-$HOME_MANAGER_CONFIG}"
   HOME_MANAGER_SYSTEM_VALUE="${HOME_MANAGER_SYSTEM_VALUE:-${HOME_MANAGER_SYSTEM:-}}"
 
@@ -293,7 +349,7 @@ find_homebrew() {
 
 install_homebrew() {
   command_exists curl || die "curl is required to install Homebrew"
-  info "Installing Homebrew because brew.nix declares Homebrew casks"
+  info "Installing Homebrew for Homebrew casks"
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 }
 
@@ -349,18 +405,19 @@ bootstrap_darwin() {
 
   ensure_nix
 
-  if ! find_homebrew >/dev/null 2>&1; then
-    if [ "$INSTALL_HOMEBREW" -ne 1 ]; then
-      die "Homebrew is not installed, but brew.nix declares casks. Re-run with --install-homebrew or install Homebrew first."
+  if [ "$ENABLE_HOMEBREW_CASKS" = "true" ] && ! find_homebrew >/dev/null 2>&1; then
+    if [ "$CHECK_ONLY" -eq 1 ]; then
+      info "Homebrew is missing; check-only mode will not install it"
+    else
+      install_homebrew
+      find_homebrew >/dev/null 2>&1 || die "Homebrew installer finished, but brew was not found"
     fi
-
-    install_homebrew
-    find_homebrew >/dev/null 2>&1 || die "Homebrew installer finished, but brew was not found"
   fi
 
   export NIX_DARWIN_HOSTNAME="$HOST_NAME"
   export NIX_DARWIN_USER="$TARGET_USER"
   export NIX_DARWIN_HOME="$TARGET_HOME"
+  export NIX_DARWIN_ENABLE_HOMEBREW_CASKS="$ENABLE_HOMEBREW_CASKS"
 
   info "Checking nix-darwin flake for host $HOST_NAME"
   "$NIX_BIN" "${NIX_FLAGS[@]}" flake check --impure "$REPO_ROOT"
@@ -381,14 +438,15 @@ bootstrap_darwin() {
     NIX_DARWIN_HOSTNAME="$HOST_NAME" \
     NIX_DARWIN_USER="$TARGET_USER" \
     NIX_DARWIN_HOME="$TARGET_HOME" \
+    NIX_DARWIN_ENABLE_HOMEBREW_CASKS="$ENABLE_HOMEBREW_CASKS" \
     "$NIX_BIN" "${NIX_FLAGS[@]}" run --impure nix-darwin/master#darwin-rebuild -- switch --flake "$REPO_ROOT#$HOST_NAME" --impure
 
   info "Bootstrap complete. Open a new shell to pick up Home Manager changes."
 }
 
 bootstrap_linux() {
-  if [ "$INSTALL_HOMEBREW" -eq 1 ]; then
-    die "--install-homebrew is only supported on macOS"
+  if [ "$INSTALL_CASK" -eq 1 ]; then
+    die "--install-cask is only supported on macOS"
   fi
 
   if [ "$SYNC_TO_TARGET" -eq 1 ]; then
@@ -434,7 +492,7 @@ else
 fi
 HOME_MANAGER_SYSTEM_VALUE="${HOME_MANAGER_SYSTEM:-}"
 INSTALL_NIX=0
-INSTALL_HOMEBREW=0
+INSTALL_CASK=0
 SYNC_TO_TARGET=1
 FORCE_SYNC=0
 CHECK_ONLY=0
@@ -479,8 +537,8 @@ while [ "$#" -gt 0 ]; do
       INSTALL_NIX=1
       shift
       ;;
-    --install-homebrew)
-      INSTALL_HOMEBREW=1
+    --install-cask|--install-homebrew)
+      INSTALL_CASK=1
       shift
       ;;
     --no-sync)
