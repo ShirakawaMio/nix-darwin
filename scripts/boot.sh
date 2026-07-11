@@ -206,7 +206,7 @@ load_env_file() {
   if [ -f "$REPO_ROOT/.env" ]; then
     while IFS='=' read -r key value; do
       case "$key" in
-        NIX_DARWIN_HOSTNAME|NIX_DARWIN_USER|NIX_DARWIN_HOME|NIX_DARWIN_ENABLE_HOMEBREW_CASKS|HOME_MANAGER_CONFIG|HOME_MANAGER_SYSTEM)
+        NIX_DARWIN_HOSTNAME|NIX_DARWIN_USER|NIX_DARWIN_HOME|NIX_DARWIN_ENABLE_HOMEBREW_CASKS|HOME_MANAGER_USER|HOME_MANAGER_HOME|HOME_MANAGER_CONFIG|HOME_MANAGER_SYSTEM)
           if [ -z "${!key:-}" ]; then
             eval "$key=$value"
             export "$key"
@@ -217,15 +217,24 @@ load_env_file() {
   fi
 }
 
-write_env_file() {
-  cat > "$REPO_ROOT/.env" <<EOF
+write_env_file_at() {
+  local env_file
+  env_file="$1"
+
+  cat > "$env_file" <<EOF
 NIX_DARWIN_HOSTNAME='$(env_escape "$HOST_NAME")'
 NIX_DARWIN_USER='$(env_escape "$TARGET_USER")'
 NIX_DARWIN_HOME='$(env_escape "$TARGET_HOME")'
 NIX_DARWIN_ENABLE_HOMEBREW_CASKS='$(env_escape "$ENABLE_HOMEBREW_CASKS")'
+HOME_MANAGER_USER='$(env_escape "$TARGET_USER")'
+HOME_MANAGER_HOME='$(env_escape "$TARGET_HOME")'
 HOME_MANAGER_CONFIG='$(env_escape "$HOME_MANAGER_CONFIG_VALUE")'
 HOME_MANAGER_SYSTEM='$(env_escape "$HOME_MANAGER_SYSTEM_VALUE")'
 EOF
+}
+
+write_env_file() {
+  write_env_file_at "$REPO_ROOT/.env"
 }
 
 ensure_env_defaults() {
@@ -513,6 +522,9 @@ bootstrap_linux() {
   else
     home_manager_root="$REPO_ROOT"
   fi
+
+  write_env_file_at "$home_manager_root/.env"
+  info "Exported machine-local Home Manager .env"
 
   ensure_nix
 
