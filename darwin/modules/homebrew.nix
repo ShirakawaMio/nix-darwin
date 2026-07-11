@@ -16,7 +16,7 @@
 
     casks = [
       "anki"
-      "codex-app"
+      "chatgpt"
       "hammerspoon"
       "parallels"
       "telegram"
