@@ -32,9 +32,22 @@ macOS 的 `--install-cask` 会安装 Homebrew 并启用 `homebrew.nix` 管理
 cask；如果跳过 cask/Homebrew，`homebrew.nix` 不会启用。
 `--install-homebrew` 仅作为兼容旧命令的别名保留。
 
-Linux 会把主仓库同步到 `~/.config/nix-home`，用 `home/flake.nix`
-生成当前用户的 standalone Home Manager 配置，构建
+Linux 不会把整个 nix-darwin 仓库放进目标机器。安装器只把 `home/`
+里的 standalone Home Manager 配置和配套脚本同步到
+`~/.config/home-manager`，在该目录构建
 `homeConfigurations.<user>.activationPackage`，然后激活用户环境。
+
+后续在目标机器上可以直接使用标准 Home Manager 目录：
+
+```sh
+home-manager switch
+```
+
+也可以使用同步过去的脚本显式按 flake output 切换：
+
+```sh
+~/.config/home-manager/scripts/switch.sh
+```
 
 如果已经装好 Nix 和 Homebrew，可以省略安装参数：
 
