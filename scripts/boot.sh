@@ -152,6 +152,27 @@ validate_bool() {
   esac
 }
 
+enable_nix_flake_features() {
+  local nix_config
+  nix_config="extra-experimental-features = nix-command flakes"
+
+  case "${NIX_CONFIG:-}" in
+    *accept-flake-config*)
+      ;;
+    *)
+      nix_config="$nix_config
+accept-flake-config = true"
+      ;;
+  esac
+
+  if [ -n "${NIX_CONFIG:-}" ]; then
+    export NIX_CONFIG="$NIX_CONFIG
+$nix_config"
+  else
+    export NIX_CONFIG="$nix_config"
+  fi
+}
+
 prompt_enable_homebrew_casks() {
   local reply
 
@@ -606,6 +627,7 @@ done
 SCRIPT_DIR="$(script_dir)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd -P)"
 NIX_FLAGS=(--extra-experimental-features "nix-command flakes" --accept-flake-config)
+enable_nix_flake_features
 
 load_env_file
 ensure_env_defaults
