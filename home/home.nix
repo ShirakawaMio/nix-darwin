@@ -3,6 +3,7 @@
 {
   imports = [
     ./modules/packages.nix
+    ./modules/nix.nix
     ./modules/shell.nix
     ./modules/git.nix
     ./modules/xdg-configs.nix

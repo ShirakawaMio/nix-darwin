@@ -36,6 +36,10 @@ Linux 不会把整个 nix-darwin 仓库放进目标机器。安装器只把 `hom
 里的 standalone Home Manager 配置和配套脚本同步到
 `~/.config/home-manager`，在该目录构建
 `homeConfigurations.<user>.activationPackage`，然后激活用户环境。
+首次安装时，脚本会为本次 Nix 调用显式启用 `nix-command flakes` 和
+`accept-flake-config`，不依赖目标机器已有 Nix 配置。激活后，
+Home Manager 会继续管理用户级 `~/.config/nix/nix.conf`，保持这些
+Nix 默认行为。
 
 后续在目标机器上可以直接使用标准 Home Manager 目录：
 
@@ -43,7 +47,8 @@ Linux 不会把整个 nix-darwin 仓库放进目标机器。安装器只把 `hom
 home-manager switch
 ```
 
-也可以使用同步过去的脚本显式按 flake output 切换：
+也可以使用同步过去的脚本显式按 flake output 切换；该脚本会为本次命令启用
+所需 Nix 选项，不需要先修改全局 Nix 配置：
 
 ```sh
 ~/.config/home-manager/scripts/switch.sh
