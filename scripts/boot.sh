@@ -13,15 +13,15 @@ macOS:
   Stores host defaults in .env, then switches nix-darwin.
 
 Linux:
-  Builds home/ as a standalone Home Manager configuration, then activates the
-  generated user environment.
+  Syncs only the standalone Home Manager config into ~/.config/home-manager,
+  builds it there, then activates the generated user environment.
 
 Options:
   --hostname NAME              macOS host flake output stored in .env.
                                Default: macOS LocalHostName or hostname -s
   --target-dir PATH            Config path to sync this repo into.
                                macOS default: /etc/nix-darwin
-                               Linux default: $HOME/.config/nix-home
+                               Linux default: $HOME/.config/home-manager
   --user NAME                  User managed by generated config.
                                Default: current user
   --home PATH                  Home directory for --user.
@@ -45,7 +45,8 @@ Environment overrides:
   TARGET_DIR, TARGET_USER, TARGET_HOME,
   HOME_MANAGER_CONFIG, HOME_MANAGER_SYSTEM
 
-The script writes machine-local defaults to .env when they are missing. The
+The script writes machine-local defaults to .env when they are missing. Linux
+standalone Home Manager sync copies home/ contents only, not this full repo. The
 script itself does not install normal packages globally. Nix and Homebrew
 bootstrap are explicit opt-ins. Linux Home Manager activation installs into the
 target user's Home Manager profile, not a system-wide package profile.
@@ -149,6 +150,27 @@ validate_bool() {
       die "$name must be 'true' or 'false'"
       ;;
   esac
+}
+
+enable_nix_flake_features() {
+  local nix_config
+  nix_config="extra-experimental-features = nix-command flakes"
+
+  case "${NIX_CONFIG:-}" in
+    *accept-flake-config*)
+      ;;
+    *)
+      nix_config="$nix_config
+accept-flake-config = true"
+      ;;
+  esac
+
+  if [ -n "${NIX_CONFIG:-}" ]; then
+    export NIX_CONFIG="$NIX_CONFIG
+$nix_config"
+  else
+    export NIX_CONFIG="$nix_config"
+  fi
 }
 
 prompt_enable_homebrew_casks() {
@@ -394,6 +416,39 @@ sync_repo() {
   canonical_path "$target_dir"
 }
 
+sync_home_manager_config() {
+  local source_root target_dir source_home source_real target_real
+  local rsync_args
+  source_root="$1"
+  target_dir="$2"
+  source_home="$source_root/home"
+
+  [ -d "$source_home" ] || die "standalone Home Manager source directory is missing: $source_home"
+
+  source_real="$(canonical_path "$source_home")"
+  target_real="$(canonical_path "$target_dir")"
+
+  if [ "$source_real" = "$target_real" ]; then
+    printf '%s\n' "$source_real"
+    return
+  fi
+
+  info "Syncing standalone Home Manager config to $target_dir"
+  mkdir -p "$target_dir"
+
+  if has_files "$target_dir" && [ "$FORCE_SYNC" -ne 1 ]; then
+    die "$target_dir is not empty. Re-run with --force-sync after reviewing it, or use --no-sync."
+  fi
+
+  rsync_args=(-a --exclude result --exclude 'result-*')
+  if [ "$FORCE_SYNC" -eq 1 ]; then
+    rsync_args+=(--delete)
+  fi
+
+  rsync "${rsync_args[@]}" "$source_home"/ "$target_dir"/
+  canonical_path "$target_dir"
+}
+
 bootstrap_darwin() {
   if [ "$(uname -m)" != "arm64" ]; then
     die "this nix-darwin flake currently targets aarch64-darwin, but this machine is $(uname -m)"
@@ -445,12 +500,18 @@ bootstrap_darwin() {
 }
 
 bootstrap_linux() {
+  local home_manager_root
+
   if [ "$INSTALL_CASK" -eq 1 ]; then
     die "--install-cask is only supported on macOS"
   fi
 
   if [ "$SYNC_TO_TARGET" -eq 1 ]; then
-    REPO_ROOT="$(sync_repo "$REPO_ROOT" "$TARGET_DIR" 0)"
+    home_manager_root="$(sync_home_manager_config "$REPO_ROOT" "$TARGET_DIR")"
+  elif [ -f "$REPO_ROOT/home/flake.nix" ]; then
+    home_manager_root="$REPO_ROOT/home"
+  else
+    home_manager_root="$REPO_ROOT"
   fi
 
   ensure_nix
@@ -461,12 +522,12 @@ bootstrap_linux() {
   export HOME_MANAGER_CONFIG="$HOME_MANAGER_CONFIG_VALUE"
 
   info "Checking standalone Home Manager flake for $HOME_MANAGER_CONFIG_VALUE"
-  "$NIX_BIN" "${NIX_FLAGS[@]}" flake check --impure "$REPO_ROOT/home"
+  "$NIX_BIN" "${NIX_FLAGS[@]}" flake check --impure "$home_manager_root"
 
   info "Building homeConfigurations.${HOME_MANAGER_CONFIG_VALUE}.activationPackage"
   "$NIX_BIN" "${NIX_FLAGS[@]}" build --impure \
-    "$REPO_ROOT/home#homeConfigurations.${HOME_MANAGER_CONFIG_VALUE}.activationPackage" \
-    -o "$REPO_ROOT/result-home"
+    "$home_manager_root#homeConfigurations.${HOME_MANAGER_CONFIG_VALUE}.activationPackage" \
+    -o "$home_manager_root/result-home"
 
   if [ "$CHECK_ONLY" -eq 1 ]; then
     info "Check-only mode complete"
@@ -474,7 +535,7 @@ bootstrap_linux() {
   fi
 
   info "Activating standalone Home Manager profile"
-  HOME_MANAGER_BACKUP_EXT="${HOME_MANAGER_BACKUP_EXT:-hm-backup}" "$REPO_ROOT/result-home/activate"
+  HOME_MANAGER_BACKUP_EXT="${HOME_MANAGER_BACKUP_EXT:-hm-backup}" "$home_manager_root/result-home/activate"
 
   info "Bootstrap complete. Open a new shell to pick up Home Manager changes."
 }
@@ -566,6 +627,7 @@ done
 SCRIPT_DIR="$(script_dir)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd -P)"
 NIX_FLAGS=(--extra-experimental-features "nix-command flakes" --accept-flake-config)
+enable_nix_flake_features
 
 load_env_file
 ensure_env_defaults
@@ -590,7 +652,7 @@ case "$OS_NAME" in
     ;;
   Linux)
     if [ -z "$TARGET_DIR" ]; then
-      TARGET_DIR="$TARGET_HOME/.config/nix-home"
+      TARGET_DIR="$TARGET_HOME/.config/home-manager"
     fi
     if [ -z "$HOME_MANAGER_SYSTEM_VALUE" ]; then
       HOME_MANAGER_SYSTEM_VALUE="$(detect_linux_system)"

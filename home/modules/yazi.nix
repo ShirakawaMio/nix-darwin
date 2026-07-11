@@ -9,8 +9,8 @@
       smart-enter = pkgs.yaziPlugins.smart-enter;
       smart-filter = pkgs.yaziPlugins.smart-filter;
       git = pkgs.yaziPlugins.git;
-      piper = pkgs.yaziPlugins.piper;
       chmod = pkgs.yaziPlugins.chmod;
+      mount = pkgs.yaziPlugins.mount;
     };
 
     flavors = {
@@ -27,6 +27,7 @@
         { run = "plugin chmod"; on = [ "c" "m"]; } # chmod on selected files
         { run = "plugin smart-enter"; on = [ "l" ]; }
         { run = "plugin smart-filter"; on = [ "F" ]; }
+        { run = "plugin mount"; on = [ "M" ]; }
       ];
     };
 

@@ -5,6 +5,7 @@ format = """
 $os\
 $username\
 $hostname\
+[ ](bg:red)\
 [](bg:peach fg:red)\
 $directory\
 [](bg:yellow fg:peach)\
@@ -65,7 +66,6 @@ format = '[ $user]($style)'
 
 [hostname]
 ssh_only = true
-trim_at = '-'
 style = "bg:red fg:crust"
 format = '[@$hostname]($style)'
 

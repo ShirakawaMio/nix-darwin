@@ -16,7 +16,7 @@
 
     casks = [
       "anki"
-      "codex-app"
+      "chatgpt"
       "hammerspoon"
       "parallels"
       "telegram"
@@ -25,8 +25,6 @@
       "homerow"
       "pdf-expert"
       "tencent-lemon"
-      "chatgpt"
-      "font-symbols-only-nerd-font"
       "karabiner-elements"
       "prince"
       "visual-studio-code"
