@@ -37,6 +37,7 @@
       "orbstack"
       "steam"
       "whatsapp"
+      "microsoft-office"
     ];
   };
 }
