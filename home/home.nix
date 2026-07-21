@@ -5,6 +5,10 @@
     ./modules/packages.nix
     ./modules/nix.nix
     ./modules/shell.nix
+    ./modules/zsh.nix
+    ./modules/fzf.nix
+    ./modules/zoxide.nix
+    ./modules/starship.nix
     ./modules/git.nix
     ./modules/xdg-configs.nix
     ./modules/global-install-blocker.nix
