@@ -34,26 +34,6 @@ in
     shellAliases = {
       zshconfig = "$EDITOR ~/.zshrc";
       ll = "ls -lah";
-
-      alt-tab = "open -a \"AltTab\"";
-      telegram = "open -a \"Telegram\"";
-      tencent-lemon = "open -a \"Tencent Lemon\"";
-      clash = "open -a \"Clash Verge\"";
-      chrome = "open -a \"Google Chrome Canary\"";
-      hammerspoon = "open -a \"Hammerspoon\"";
-      pdf-expert = "open -a \"PDF Expert\"";
-      homerow = "open -a \"Homerow\"";
-      vivaldi = "open -a \"Vivaldi\"";
-      karabiner = "open -a \"Karabiner-Elements\"";
-      steam = "open -a \"Steam\"";
-      whatsapp = "open -a \"WhatsApp\"";
-      iphone = "open -a \"iPhone Mirroring\"";
-      notes = "open -a \"Notes\"";
-      wechat = "open -a \"WeChat\"";
-      reminder = "open -a \"Reminders\"";
-      calendar = "open -a \"Calendar\"";
-      mail = "open -a \"Mail\"";
-      cisco = "open -a \"Cisco Secure Client\"";
     };
 
     profileExtra = ''
