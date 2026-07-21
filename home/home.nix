@@ -14,6 +14,7 @@
     ./modules/global-install-blocker.nix
     ./modules/hammerspoon.nix
     ./modules/neovim.nix
+    ./modules/tmux.nix
     ./modules/yazi.nix
   ];
 
